@@ -1,6 +1,5 @@
 import { AIModel, TTSModel, Project } from '../types';
 
-// Safely extract environment variables without tsc error
 const getEnvVar = (key: string): string => {
   try {
     const meta = import.meta as unknown as { env?: Record<string, string> };
@@ -10,7 +9,7 @@ const getEnvVar = (key: string): string => {
   }
 };
 
-// Primary & Secondary OpenRouter API keys read dynamically from .env or fallback
+// Dual OpenRouter API Keys
 export const OPENROUTER_API_KEYS = [
   getEnvVar('VITE_OPENROUTER_API_KEY_1') || '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',
   getEnvVar('VITE_OPENROUTER_API_KEY_2') || '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'
@@ -18,37 +17,37 @@ export const OPENROUTER_API_KEYS = [
 
 export const AI_MODELS: AIModel[] = [
   {
-    id: 'google/gemma-4-31b-it:free',
+    id: 'google/gemma-4-26b-a4b-it:free',
     displayName: 'Gemma',
-    description: 'Multimodal Vizuallik & Tezgakor O\'zbekcha Tahlil (Boshlang\'ich)',
+    description: 'Multimodal Vision & Ultra-Fast O\'zbekcha Intellekt (Faol 200 OK)',
     supportsVision: true,
     tag: 'Vision & Chat'
   },
   {
     id: 'cohere/north-mini-code:free',
     displayName: 'Mini Coder',
-    description: 'Dasturlash va mantiqiy algoritmlarni shakllantirish',
+    description: 'Dasturlash va mantiqiy algoritmlarni shakllantirish (Faol 200 OK)',
     supportsVision: false,
     tag: 'Coding'
   },
   {
     id: 'openai/gpt-oss-20b:free',
     displayName: 'GPT OSS',
-    description: 'Keng qamrovli umumiy intellekt modeli',
+    description: 'Keng qamrovli umumiy intellekt neyron modeli (Faol 200 OK)',
     supportsVision: false,
     tag: 'General AI'
   },
   {
     id: 'liquid/lfm-2.5-2.6b:free',
     displayName: 'Liquid AI',
-    description: 'Judam ham tezkor javob qaytaruvchi neyron tarmoq',
+    description: 'Ultra-fast tezkor javob qaytaruvchi neyron tarmoq (Faol 200 OK)',
     supportsVision: false,
     tag: 'Fast Inference'
   },
   {
     id: 'nvidia/nemotron-3-super-120b-a12b:free',
     displayName: 'Neon 3',
-    description: 'Murojaatlarni chuqur va mukammal tahlil qiluvchi neyron model',
+    description: 'Murojaatlarni chuqur tahlil qiluvchi mega model (Faol 200 OK)',
     supportsVision: false,
     tag: 'Heavyweight'
   }

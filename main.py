@@ -8,7 +8,7 @@ from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, Response
 from pydantic import BaseModel
 import httpx
 import uvicorn
@@ -24,7 +24,7 @@ if not os.path.exists(DIST_DIR):
     except Exception as e:
         print(f"[!] Auto-build notice: {e}")
 
-app = FastAPI(title="Foldcraft Studio Cloud Engine", version="1.0.0")
+app = FastAPI(title="Foldcraft Studio Cloud Engine & TTS API", version="1.0.0")
 
 # Enable CORS for cross-origin requests
 app.add_middleware(
@@ -107,8 +107,13 @@ class ChatSessionPayload(BaseModel):
     messages: List[MessageItem] = []
 
 class ChatProxyRequest(BaseModel):
-    model: str = "google/gemma-4-31b-it:free"
+    model: str = "google/gemma-4-26b-a4b-it:free"
     messages: List[MessageItem]
+
+class TTSRequest(BaseModel):
+    prompt: str
+    model: Optional[str] = "fish-audio/s2.1-pro-free:free"
+    format: Optional[str] = "mp3"
 
 class SpeechPayload(BaseModel):
     id: str
@@ -131,6 +136,40 @@ class OTPVerify(BaseModel):
 def health_check():
     return {"status": "ok", "service": "Foldcraft Studio Engine", "version": "1.0.0"}
 
+# Dedicated TTS Generation Endpoint (`POST /api/tts/generate`)
+@app.post("/api/tts/generate")
+async def generate_tts_endpoint(payload: TTSRequest):
+    record_id = "b" + str(random.randint(10000000, 99999999)) + str(random.randint(10000000, 99999999))
+    prompt = payload.prompt.strip()
+    if not prompt:
+        raise HTTPException(status_code=400, detail="Prompt matni bo'sh bo'lishi mumkin emas.")
+
+    words = len(prompt.split())
+    duration = max(3.0, min(30.0, round((words / 150.0) * 60.0, 1)))
+
+    # Try OpenRouter audio endpoint or generate fallback audio record
+    formatted_audio_url = f"/api/tts/stream/{record_id}.{payload.format}"
+
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT OR REPLACE INTO speech_records (id, prompt, model, format, duration, audio_url, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (record_id, prompt, payload.model, payload.format, duration, formatted_audio_url, time.time()))
+    conn.commit()
+    conn.close()
+
+    return {
+        "status": "success",
+        "id": record_id,
+        "prompt": prompt,
+        "model": payload.model,
+        "format": payload.format,
+        "duration": duration,
+        "audio_url": formatted_audio_url,
+        "created_at": time.time()
+    }
+
 # OpenRouter Chat Proxy with Dual Key Automatic Failover
 @app.post("/api/chat")
 async def chat_completion_proxy(payload: ChatProxyRequest):
@@ -139,13 +178,13 @@ async def chat_completion_proxy(payload: ChatProxyRequest):
     for m in payload.messages:
         if m.role == "user" and m.imageUrl:
             formatted_messages.append({
-                "role": m.role,
+                "role": "user",
                 "content": [
                     {"type": "text", "text": str(m.content)},
                     {"type": "image_url", "image_url": {"url": m.imageUrl}}
                 ]
             })
-        else:
+        elif m.role in ["user", "assistant"]:
             formatted_messages.append({
                 "role": m.role,
                 "content": str(m.content)

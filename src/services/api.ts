@@ -4,7 +4,6 @@ import { OPENROUTER_API_KEYS, DEFAULT_AI_MODEL } from './constants';
 
 const BACKEND_URL = '';
 
-// Helper to extract Vite env variables safely
 const getEnvVar = (key: string): string => {
   try {
     const meta = import.meta as unknown as { env?: Record<string, string> };
@@ -139,8 +138,8 @@ function audioBufferToWavBlob(buffer: AudioBuffer): Blob {
   return new Blob([outBuffer], { type: 'audio/wav' });
 }
 
-const STORAGE_KEY_CHATS = 'foldcraft_ai_chats_v3';
-const STORAGE_KEY_TTS = 'foldcraft_tts_records_v3';
+const STORAGE_KEY_CHATS = 'foldcraft_ai_chats_v4';
+const STORAGE_KEY_TTS = 'foldcraft_tts_records_v4';
 
 export const ApiService = {
   async getChats(): Promise<ChatSession[]> {
@@ -213,25 +212,21 @@ export const ApiService = {
 
   async sendChatMessage(
     messages: Message[],
-    modelId: string = DEFAULT_AI_MODEL.id
+    requestedModelId: string = DEFAULT_AI_MODEL.id
   ): Promise<string> {
-    const hasSystem = messages.some(m => m.role === 'system');
-    const fullMessages = hasSystem ? messages : [
-      {
-        id: 'sys_' + Date.now(),
-        role: 'system' as const,
-        content: 'Foydalanuvchining barcha savollariga o\'zbek tilida, aniq, tushunarli va mukammal javob ber.',
-        timestamp: Date.now()
-      },
-      ...messages
-    ];
+    const userAndAssistantMsgs = messages.filter(m => m.role === 'user' || m.role === 'assistant');
+    
+    const formattedMessages = userAndAssistantMsgs.map((m, idx) => {
+      let textContent = m.content;
+      if (idx === 0 && m.role === 'user') {
+        textContent = `[System instruction: Javoblarni har doim o'zbek tilida, aniq va professional darajada taqdim et.]\n\n${textContent}`;
+      }
 
-    const formattedMessages = fullMessages.map(m => {
       if (m.role === 'user' && m.imageUrl) {
         return {
-          role: m.role,
+          role: 'user',
           content: [
-            { type: 'text', text: m.content },
+            { type: 'text', text: textContent },
             {
               type: 'image_url',
               image_url: { url: m.imageUrl }
@@ -241,39 +236,52 @@ export const ApiService = {
       }
       return {
         role: m.role,
-        content: m.content
+        content: textContent
       };
     });
 
-    let lastError: unknown = null;
+    const candidateModels = [
+      requestedModelId,
+      'google/gemma-4-26b-a4b-it:free',
+      'cohere/north-mini-code:free',
+      'openai/gpt-oss-20b:free',
+      'liquid/lfm-2.5-2.6b:free',
+      'nvidia/nemotron-3.5-lightning:free'
+    ];
+    const uniqueModels = Array.from(new Set(candidateModels));
+
+    let lastErrorMsg = '';
 
     for (const key of OPENROUTER_API_KEYS) {
-      try {
-        const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${key}`,
-            'HTTP-Referer': window.location.origin,
-            'X-Title': 'Foldcraft Studio AI',
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            model: modelId,
-            messages: formattedMessages,
-            temperature: 0.7,
-            max_tokens: 2048
-          })
-        });
+      for (const modelId of uniqueModels) {
+        try {
+          const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${key}`,
+              'HTTP-Referer': window.location.origin,
+              'X-Title': 'Foldcraft Studio',
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              model: modelId,
+              messages: formattedMessages,
+              temperature: 0.7,
+              max_tokens: 2048
+            })
+          });
 
-        if (response.ok) {
-          const data = await response.json();
-          const reply = data.choices?.[0]?.message?.content;
-          if (reply) return reply;
-        } else {
-          console.warn(`OpenRouter key failed (${response.status}), trying next key...`);
+          if (response.ok) {
+            const data = await response.json();
+            const reply = data.choices?.[0]?.message?.content;
+            if (reply && reply.trim()) return reply.trim();
+          } else {
+            const errJson = await response.json().catch(() => ({}));
+            lastErrorMsg = errJson.error?.message || `HTTP ${response.status}`;
+          }
+        } catch (err: unknown) {
+          lastErrorMsg = err instanceof Error ? err.message : 'Network failure';
         }
-      } catch (err) {
-        lastError = err;
       }
     }
 
@@ -282,8 +290,8 @@ export const ApiService = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: modelId,
-          messages: fullMessages
+          model: requestedModelId,
+          messages: messages
         })
       });
       if (res.ok) {
@@ -294,11 +302,46 @@ export const ApiService = {
       // ignore
     }
 
-    throw lastError || new Error('Barcha API kalitlari va tarmoq serveri band. Iltimos qaytadan urinib ko\'ring.');
+    throw new Error(`OpenRouter neyron modellari band (${lastErrorMsg}). Iltimos bir necha soniyadan so'ng qayta yuboring.`);
   },
 
+  /**
+   * Dedicated TTS Speech Generation API Call (`POST /api/tts/generate`)
+   */
   async generateSpeech(prompt: string, model: string, format: string = 'mp3'): Promise<AudioRecord> {
     const recordId = 'b' + Math.random().toString(16).substring(2, 10) + Math.random().toString(16).substring(2, 10);
+    
+    // Call dedicated server endpoint first if reached
+    try {
+      const serverRes = await fetch(`${BACKEND_URL}/api/tts/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, model, format })
+      });
+      if (serverRes.ok) {
+        const serverData = await serverRes.json();
+        const synth = await generateSyntheticAudioUrl(prompt, format);
+        const record: AudioRecord = {
+          id: serverData.id || recordId,
+          prompt: serverData.prompt || prompt,
+          model: serverData.model || model,
+          format: serverData.format || format,
+          duration: serverData.duration || synth.duration,
+          audioUrl: synth.url,
+          createdAt: Date.now()
+        };
+
+        const local = localStorage.getItem(STORAGE_KEY_TTS);
+        let list: AudioRecord[] = local ? JSON.parse(local) : [];
+        list.unshift(record);
+        localStorage.setItem(STORAGE_KEY_TTS, JSON.stringify(list));
+        return record;
+      }
+    } catch {
+      // ignore
+    }
+
+    // Client fallback
     const { url, duration } = await generateSyntheticAudioUrl(prompt, format);
 
     const record: AudioRecord = {
@@ -322,16 +365,6 @@ export const ApiService = {
     }
     list.unshift(record);
     localStorage.setItem(STORAGE_KEY_TTS, JSON.stringify(list));
-
-    try {
-      await fetch(`${BACKEND_URL}/api/speech`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(record)
-      });
-    } catch {
-      // ignore
-    }
 
     return record;
   },
@@ -364,7 +397,7 @@ export const ApiService = {
         if (!error) {
           return {
             success: true,
-            message: `Supabase 6-xonali OTP kodi ${email} manziliga yuborildi.`
+            message: `Supabase 6-xonali tasdiqlash kodi ${email} pochtasiga yuborildi.`
           };
         } else {
           console.warn('Supabase OTP error:', error.message);

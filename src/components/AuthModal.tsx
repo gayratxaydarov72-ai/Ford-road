@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, ShieldCheck, Mail, KeyRound, CheckCircle2, ArrowRight, RefreshCw } from 'lucide-react';
+import { X, ShieldCheck, Mail, CheckCircle2, ArrowRight, RefreshCw, Sparkles, Copy } from 'lucide-react';
 import { ApiService } from '../services/api';
 
 interface AuthModalProps {
@@ -37,10 +37,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           setDemoCodeNotice(res.demoCode);
         }
       } else {
-        setErrorMsg(res.message || 'Failed to send OTP code.');
+        setErrorMsg(res.message || 'OTP kodni yuborishda xatolik bo\'ldi.');
       }
     } catch {
-      setErrorMsg('Error contacting authentication service.');
+      setErrorMsg('Autentifikatsiya xizmati bilan aloqa bog\'lanmadi.');
     } finally {
       setIsLoading(false);
     }
@@ -48,7 +48,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   const handleOtpChange = (index: number, value: string) => {
     if (value.length > 1) {
-      // If user pasted multi-digit code
       const digits = value.slice(0, 6).split('');
       const newOtp = [...otpCode];
       digits.forEach((d, i) => {
@@ -62,7 +61,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     newOtp[index] = value;
     setOtpCode(newOtp);
 
-    // Auto move to next input box
     if (value && index < 5) {
       const nextInput = document.getElementById(`otp-input-${index + 1}`);
       nextInput?.focus();
@@ -80,7 +78,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     e.preventDefault();
     const fullCode = otpCode.join('');
     if (fullCode.length < 6) {
-      setErrorMsg('Please enter all 6 digits of the code.');
+      setErrorMsg('Iltimos 6 xonali kodning barchasini kiriting.');
       return;
     }
 
@@ -93,13 +91,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         onSuccess(email);
         onClose();
       } else {
-        setErrorMsg(res.message || 'Invalid OTP code entered.');
+        setErrorMsg(res.message || 'Kiritilgan tasdiqlash kodi noto\'g\'ri.');
       }
     } catch {
-      setErrorMsg('Verification failed. Try 123456 or request a new code.');
+      setErrorMsg('Tasdiqlashda xatolik bo\'ldi. Qaytadan urinib ko\'ring.');
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const fillDemoCode = (codeStr: string) => {
+    const digits = codeStr.slice(0, 6).split('');
+    setOtpCode(digits);
   };
 
   return (
@@ -112,8 +115,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-white tracking-tight">Supabase OTP Verification</h2>
-              <span className="text-[10px] text-white/50">Google & Supabase Identity Protocol</span>
+              <h2 className="text-sm font-semibold text-white tracking-tight">Supabase & Google OTP Autentifikatsiya</h2>
+              <span className="text-[10px] text-white/50">Foldcraft Xavfsiz Kirish Tizimi</span>
             </div>
           </div>
           <button
@@ -135,11 +138,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           {step === 'email' ? (
             <form onSubmit={handleSendOTP} className="space-y-4">
               <p className="text-xs text-white/70 leading-relaxed">
-                Enter your Google / Work email address to receive an instant 6-digit one-time authorization code.
+                Google / Work e-pochta manzilingizni kiriting. Pochtaga 6 xonali bir martalik tasdiqlash kodi yuboriladi.
               </p>
 
               <div>
-                <label className="block text-xs font-medium text-white/60 mb-1.5">Email Address</label>
+                <label className="block text-xs font-medium text-white/60 mb-1.5">Email Manzil</label>
                 <div className="relative">
                   <input
                     type="email"
@@ -162,7 +165,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   <RefreshCw className="w-4 h-4 animate-spin" />
                 ) : (
                   <>
-                    Send OTP Verification Code
+                    6-Xonali OTP Kodni Yuborish
                     <ArrowRight className="w-4 h-4" />
                   </>
                 )}
@@ -172,27 +175,28 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             <form onSubmit={handleVerifyOTP} className="space-y-5">
               <div>
                 <p className="text-xs text-white/70">
-                  Verification code sent to <strong className="text-white">{email}</strong>.
+                  Tasdiqlash kodi <strong className="text-white">{email}</strong> manziliga yuborildi.
                 </p>
+
                 {demoCodeNotice && (
-                  <div className="mt-2 p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center justify-between">
-                    <span>Demo Fast-Pass Code: <strong className="font-mono text-white text-sm ml-1">{demoCodeNotice}</strong></span>
+                  <div className="mt-3 p-3 rounded-xl bg-amber-400/10 border border-amber-400/30 text-amber-300 text-xs flex items-center justify-between">
+                    <div>
+                      <span className="block text-[10px] text-amber-400/80 uppercase font-semibold">Tezkor Avto-Tasdiqlash Kodi:</span>
+                      <strong className="font-mono text-white text-base tracking-wider">{demoCodeNotice}</strong>
+                    </div>
                     <button
                       type="button"
-                      onClick={() => {
-                        const digits = demoCodeNotice.split('');
-                        setOtpCode(digits);
-                      }}
-                      className="text-[11px] underline hover:text-white"
+                      onClick={() => fillDemoCode(demoCodeNotice)}
+                      className="px-3 py-1.5 rounded-lg bg-amber-400 text-black font-semibold text-xs hover:scale-105 active:scale-95 transition-all shadow"
                     >
-                      Autofill
+                      Kiritish
                     </button>
                   </div>
                 )}
               </div>
 
               {/* 6 Digit Input Boxes */}
-              <div className="flex justify-between gap-2 my-4">
+              <div className="flex justify-between gap-1.5 my-4">
                 {otpCode.map((digit, idx) => (
                   <input
                     key={idx}
@@ -202,7 +206,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     value={digit}
                     onChange={(e) => handleOtpChange(idx, e.target.value)}
                     onKeyDown={(e) => handleOtpKeyDown(idx, e)}
-                    className="w-11 h-12 text-center text-lg font-bold font-mono bg-white/5 border border-white/20 focus:border-white rounded-xl text-white focus:outline-none transition-all"
+                    className="w-11 h-12 text-center text-lg font-bold font-mono bg-white/5 border border-white/20 focus:border-amber-400 rounded-xl text-white focus:outline-none transition-all"
                   />
                 ))}
               </div>
@@ -213,14 +217,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   onClick={() => setStep('email')}
                   className="hover:text-white underline"
                 >
-                  Change Email
+                  Emailni o'zgartirish
                 </button>
                 <button
                   type="button"
                   onClick={() => handleSendOTP({ preventDefault: () => {} } as React.FormEvent)}
                   className="hover:text-white underline flex items-center gap-1"
                 >
-                  Resend Code
+                  Kodni qayta yuborish
                 </button>
               </div>
 
@@ -233,7 +237,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   <RefreshCw className="w-4 h-4 animate-spin" />
                 ) : (
                   <>
-                    Confirm & Authorize
+                    Tasdiqlash va Kirish
                     <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                   </>
                 )}
