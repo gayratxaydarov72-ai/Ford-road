@@ -5,15 +5,15 @@ import random
 import time
 import subprocess
 from typing import List, Optional, Dict, Any
-from fastapi import FastAPI, HTTPException, Body
+from fastapi import FastAPI, HTTPException, Body, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse, FileResponse, Response
+from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel
 import httpx
 import uvicorn
 
-# Build React frontend automatically if dist does not exist
+# Auto-build React frontend if dist does not exist
 DIST_DIR = os.path.join(os.path.dirname(__file__), "dist")
 if not os.path.exists(DIST_DIR):
     print("[*] Building React frontend for Foldcraft Studio...")
@@ -24,9 +24,8 @@ if not os.path.exists(DIST_DIR):
     except Exception as e:
         print(f"[!] Auto-build notice: {e}")
 
-app = FastAPI(title="Foldcraft Studio Cloud Engine & TTS API", version="1.0.0")
+app = FastAPI(title="Foldcraft Studio Cloud Engine", version="2.0.0")
 
-# Enable CORS for cross-origin requests
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -37,7 +36,6 @@ app.add_middleware(
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "foldcraft.db")
 
-# Load environment keys dynamically from .env or fallback
 OPENROUTER_API_KEYS = [
     os.environ.get("OPENROUTER_API_KEY_1", "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"),
     os.environ.get("OPENROUTER_API_KEY_2", "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")
@@ -46,15 +44,18 @@ OPENROUTER_API_KEYS = [
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
+    # Table chats with user_email isolation
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS chats (
             id TEXT PRIMARY KEY,
+            user_email TEXT NOT NULL DEFAULT 'guest',
             title TEXT NOT NULL,
             model TEXT NOT NULL,
             created_at REAL NOT NULL,
             updated_at REAL NOT NULL
         )
     """)
+    # Table messages
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS messages (
             id TEXT PRIMARY KEY,
@@ -66,9 +67,11 @@ def init_db():
             FOREIGN KEY (chat_id) REFERENCES chats (id) ON DELETE CASCADE
         )
     """)
+    # Table speech_records with user_email
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS speech_records (
             id TEXT PRIMARY KEY,
+            user_email TEXT DEFAULT 'guest',
             prompt TEXT NOT NULL,
             model TEXT NOT NULL,
             format TEXT NOT NULL,
@@ -77,6 +80,7 @@ def init_db():
             created_at REAL NOT NULL
         )
     """)
+    # Table otp_codes
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS otp_codes (
             email TEXT PRIMARY KEY,
@@ -85,10 +89,34 @@ def init_db():
             verified INTEGER DEFAULT 0
         )
     """)
+    # Table system_settings for Maintenance Mode
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS system_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+    """)
+    # Set default maintenance mode off
+    cursor.execute("INSERT OR IGNORE INTO system_settings (key, value) VALUES ('maintenance_mode', '0')")
     conn.commit()
     conn.close()
 
 init_db()
+
+def is_maintenance_mode() -> bool:
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT value FROM system_settings WHERE key = 'maintenance_mode'")
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] == "1" if row else False
+
+def set_maintenance_mode(status: bool):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("INSERT OR REPLACE INTO system_settings (key, value) VALUES ('maintenance_mode', ?)", ("1" if status else "0",))
+    conn.commit()
+    conn.close()
 
 # Pydantic Schemas
 class MessageItem(BaseModel):
@@ -100,6 +128,7 @@ class MessageItem(BaseModel):
 
 class ChatSessionPayload(BaseModel):
     id: str
+    userEmail: Optional[str] = "guest"
     title: str
     model: str
     createdAt: float
@@ -117,6 +146,7 @@ class TTSRequest(BaseModel):
 
 class SpeechPayload(BaseModel):
     id: str
+    userEmail: Optional[str] = "guest"
     prompt: str
     model: str
     format: str = "mp3"
@@ -131,14 +161,69 @@ class OTPVerify(BaseModel):
     email: str
     code: str
 
+class AdminLoginRequest(BaseModel):
+    username: str
+    password: str
+
+class MaintenanceToggleRequest(BaseModel):
+    enabled: bool
+
 # API Endpoints
+
 @app.get("/api/health")
 def health_check():
-    return {"status": "ok", "service": "Foldcraft Studio Engine", "version": "1.0.0"}
+    return {
+        "status": "ok",
+        "service": "Foldcraft Studio Engine",
+        "version": "2.0.0",
+        "maintenance_mode": is_maintenance_mode()
+    }
 
-# Dedicated TTS Generation Endpoint (`POST /api/tts/generate`)
+# Admin API
+@app.post("/api/admin/login")
+def admin_login(payload: AdminLoginRequest):
+    if payload.username == "admin" and payload.password == "admin1234":
+        return {
+            "success": True,
+            "token": f"admin_token_{random.randint(100000, 999999)}",
+            "message": "Admin sifatida muvaffaqiyatli kirildi!"
+        }
+    return JSONResponse(status_code=401, content={"success": False, "message": "Admin paroli yoki logindagi xatolik!"})
+
+@app.get("/api/admin/status")
+def admin_status():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM chats")
+    total_chats = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM speech_records")
+    total_speech = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM otp_codes WHERE verified = 1")
+    total_users = cursor.fetchone()[0]
+    conn.close()
+
+    return {
+        "maintenance_mode": is_maintenance_mode(),
+        "total_chats": total_chats,
+        "total_speech": total_speech,
+        "total_users": total_users
+    }
+
+@app.post("/api/admin/maintenance")
+def toggle_maintenance(payload: MaintenanceToggleRequest):
+    set_maintenance_mode(payload.enabled)
+    return {
+        "success": True,
+        "maintenance_mode": payload.enabled,
+        "message": f"Ta'mirlash rejimi {'yoqildi' if payload.enabled else 'o\'chirildi'}"
+    }
+
+# Dedicated TTS Generation Endpoint
 @app.post("/api/tts/generate")
 async def generate_tts_endpoint(payload: TTSRequest):
+    if is_maintenance_mode():
+        raise HTTPException(status_code=503, detail="Tizimda ta'mirlash va profilaktika jarayoni ketmoqda. Tez orada qayta ishga tushadi.")
+
     record_id = "b" + str(random.randint(10000000, 99999999)) + str(random.randint(10000000, 99999999))
     prompt = payload.prompt.strip()
     if not prompt:
@@ -146,15 +231,13 @@ async def generate_tts_endpoint(payload: TTSRequest):
 
     words = len(prompt.split())
     duration = max(3.0, min(30.0, round((words / 150.0) * 60.0, 1)))
-
-    # Try OpenRouter audio endpoint or generate fallback audio record
     formatted_audio_url = f"/api/tts/stream/{record_id}.{payload.format}"
 
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT OR REPLACE INTO speech_records (id, prompt, model, format, duration, audio_url, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT OR REPLACE INTO speech_records (id, user_email, prompt, model, format, duration, audio_url, created_at)
+        VALUES (?, 'guest', ?, ?, ?, ?, ?, ?)
     """, (record_id, prompt, payload.model, payload.format, duration, formatted_audio_url, time.time()))
     conn.commit()
     conn.close()
@@ -173,6 +256,9 @@ async def generate_tts_endpoint(payload: TTSRequest):
 # OpenRouter Chat Proxy with Dual Key Automatic Failover
 @app.post("/api/chat")
 async def chat_completion_proxy(payload: ChatProxyRequest):
+    if is_maintenance_mode():
+        raise HTTPException(status_code=503, detail="Tizimda ta'mirlash va profilaktika jarayoni ketmoqda. Tez orada qayta ishga tushadi.")
+
     formatted_messages = []
     
     for m in payload.messages:
@@ -219,12 +305,13 @@ async def chat_completion_proxy(payload: ChatProxyRequest):
 
         return JSONResponse(status_code=500, content={"error": last_error or "Barcha API kalitlari band."})
 
-# Chats SQLite Persistence
+# Chats SQLite Persistence (100% User Privacy Isolation)
 @app.get("/api/chats")
-def get_all_chats():
+def get_all_chats(email: str = Query('guest')):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute("SELECT id, title, model, created_at, updated_at FROM chats ORDER BY updated_at DESC")
+    # Filter chats ONLY for the requesting user!
+    cursor.execute("SELECT id, title, model, created_at, updated_at FROM chats WHERE user_email = ? ORDER BY updated_at DESC", (email,))
     rows = cursor.fetchall()
     
     chats = []
@@ -242,6 +329,7 @@ def get_all_chats():
 
         chats.append({
             "id": chat_id,
+            "userEmail": email,
             "title": title,
             "model": model,
             "createdAt": created_at,
@@ -255,11 +343,12 @@ def get_all_chats():
 def save_chat(payload: ChatSessionPayload):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
+    user_email = payload.userEmail or 'guest'
     
     cursor.execute("""
-        INSERT OR REPLACE INTO chats (id, title, model, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?)
-    """, (payload.id, payload.title, payload.model, payload.createdAt, payload.updatedAt))
+        INSERT OR REPLACE INTO chats (id, user_email, title, model, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (payload.id, user_email, payload.title, payload.model, payload.createdAt, payload.updatedAt))
 
     cursor.execute("DELETE FROM messages WHERE chat_id = ?", (payload.id,))
     for m in payload.messages:
@@ -286,10 +375,10 @@ def delete_chat(chat_id: str):
 
 # Speech Records SQLite
 @app.get("/api/speech")
-def get_speech_records():
+def get_speech_records(email: str = Query('guest')):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute("SELECT id, prompt, model, format, duration, audio_url, created_at FROM speech_records ORDER BY created_at DESC LIMIT 50")
+    cursor.execute("SELECT id, prompt, model, format, duration, audio_url, created_at FROM speech_records WHERE user_email = ? ORDER BY created_at DESC LIMIT 50", (email,))
     rows = cursor.fetchall()
     conn.close()
     records = [{
@@ -308,10 +397,11 @@ def save_speech_record(payload: SpeechPayload):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     ts = payload.createdAt or time.time() * 1000
+    user_email = payload.userEmail or 'guest'
     cursor.execute("""
-        INSERT OR REPLACE INTO speech_records (id, prompt, model, format, duration, audio_url, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (payload.id, payload.prompt, payload.model, payload.format, payload.duration, payload.audioUrl, ts))
+        INSERT OR REPLACE INTO speech_records (id, user_email, prompt, model, format, duration, audio_url, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (payload.id, user_email, payload.prompt, payload.model, payload.format, payload.duration, payload.audioUrl, ts))
     conn.commit()
     conn.close()
     return {"status": "saved", "id": payload.id}
