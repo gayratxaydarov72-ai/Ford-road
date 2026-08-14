@@ -1,9 +1,19 @@
 import { AIModel, TTSModel, Project } from '../types';
 
+// Safely extract environment variables without tsc error
+const getEnvVar = (key: string): string => {
+  try {
+    const meta = import.meta as unknown as { env?: Record<string, string> };
+    return meta?.env?.[key] || '';
+  } catch {
+    return '';
+  }
+};
+
 // Primary & Secondary OpenRouter API keys read dynamically from .env or fallback
 export const OPENROUTER_API_KEYS = [
-  import.meta.env.VITE_OPENROUTER_API_KEY_1 || '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',
-  import.meta.env.VITE_OPENROUTER_API_KEY_2 || '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'
+  getEnvVar('VITE_OPENROUTER_API_KEY_1') || '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',
+  getEnvVar('VITE_OPENROUTER_API_KEY_2') || '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'
 ];
 
 export const AI_MODELS: AIModel[] = [

@@ -2,18 +2,27 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Message, ChatSession, AudioRecord } from '../types';
 import { OPENROUTER_API_KEYS, DEFAULT_AI_MODEL } from './constants';
 
-const BACKEND_URL = ''; // Relative URL leverages Vite proxy to http://127.0.0.1:8000
+const BACKEND_URL = '';
 
-// Initialize Supabase Client dynamically from environment variables
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+// Helper to extract Vite env variables safely
+const getEnvVar = (key: string): string => {
+  try {
+    const meta = import.meta as unknown as { env?: Record<string, string> };
+    return meta?.env?.[key] || '';
+  } catch {
+    return '';
+  }
+};
+
+const supabaseUrl = getEnvVar('VITE_SUPABASE_URL');
+const supabaseAnonKey = getEnvVar('VITE_SUPABASE_ANON_KEY');
 
 let supabase: SupabaseClient | null = null;
 if (supabaseUrl && supabaseUrl !== 'https://your-supabase-project.supabase.co' && supabaseAnonKey) {
   try {
     supabase = createClient(supabaseUrl, supabaseAnonKey);
   } catch (err) {
-    console.warn('Supabase initialization error:', err);
+    console.warn('Supabase initialization notice:', err);
   }
 }
 
@@ -348,11 +357,7 @@ export const ApiService = {
     return [];
   },
 
-  /**
-   * Supabase Client & Backend OTP Dispatch
-   */
   async sendOTP(email: string): Promise<{ success: boolean; message: string; demoCode?: string }> {
-    // Attempt official Supabase JS SDK dispatch if configured
     if (supabase) {
       try {
         const { error } = await supabase.auth.signInWithOtp({ email });
@@ -369,7 +374,6 @@ export const ApiService = {
       }
     }
 
-    // Try Python FastAPI Backend OTP
     try {
       const res = await fetch(`${BACKEND_URL}/api/auth/send-otp`, {
         method: 'POST',
@@ -383,7 +387,6 @@ export const ApiService = {
       // ignore
     }
 
-    // Standalone fallback code preview
     const demoCode = Math.floor(100000 + Math.random() * 900000).toString();
     sessionStorage.setItem('foldcraft_pending_otp', JSON.stringify({ email, code: demoCode, time: Date.now() }));
     return {
@@ -394,7 +397,6 @@ export const ApiService = {
   },
 
   async verifyOTP(email: string, code: string): Promise<{ success: boolean; message: string; user?: { email: string; token: string } }> {
-    // Verify via Supabase JS SDK if configured
     if (supabase) {
       try {
         const { data, error } = await supabase.auth.verifyOtp({
@@ -412,7 +414,6 @@ export const ApiService = {
       }
     }
 
-    // Try Python FastAPI Backend Verification
     try {
       const res = await fetch(`${BACKEND_URL}/api/auth/verify-otp`, {
         method: 'POST',
@@ -430,7 +431,6 @@ export const ApiService = {
       // ignore
     }
 
-    // Fallback Code Check
     const pending = sessionStorage.getItem('foldcraft_pending_otp');
     if (pending) {
       const parsed = JSON.parse(pending);

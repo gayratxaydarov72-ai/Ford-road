@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <!-- Ultra-rich metallic neon gradients -->
+    <linearGradient id="goldRibbon" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="30%" stop-color="#c8ff00" />
+      <stop offset="75%" stop-color="#ffb703" />
+      <stop offset="100%" stop-color="#ff5722" />
+    </linearGradient>
+
+    <linearGradient id="cyanRibbon" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#00f2fe" />
+      <stop offset="50%" stop-color="#4facfe" />
+      <stop offset="100%" stop-color="#7000ff" />
+    </linearGradient>
+
+    <linearGradient id="emeraldRibbon" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#10b981" />
+      <stop offset="60%" stop-color="#059669" />
+      <stop offset="100%" stop-color="#064e3b" />
+    </linearGradient>
+
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#121217" />
+      <stop offset="50%" stop-color="#08080b" />
+      <stop offset="100%" stop-color="#000000" />
+    </linearGradient>
+
+    <radialGradient id="haloGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#c8ff00" stop-opacity="0.35" />
+      <stop offset="50%" stop-color="#00f2fe" stop-opacity="0.15" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Glow & Shadow Filters -->
+    <filter id="hyperGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="18" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+
+    <filter id="dropShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000000" flood-opacity="0.8" />
+    </filter>
+  </defs>
+
+  <!-- Container Base -->
+  <rect width="512" height="512" rx="140" fill="url(#bgGrad)" stroke="rgba(255,255,255,0.18)" stroke-width="6" />
+
+  <!-- Ambient Glowing Radial Halo -->
+  <circle cx="256" cy="256" r="220" fill="url(#haloGlow)" />
+
+  <!-- Outer Isometric Geometric Hex-Ribbon Origami Structure -->
+  <g filter="url(#hyperGlow)" transform="translate(0, -6)">
+    <!-- Top Fold Face (Gold/Neon Gradient) -->
+    <path d="M256 68 L416 160 L256 252 L96 160 Z" fill="url(#goldRibbon)" filter="url(#dropShadow)" />
+    
+    <!-- Top Specular Highlight edge -->
+    <path d="M256 68 L416 160" stroke="#ffffff" stroke-width="4" stroke-linecap="round" opacity="0.9" />
+
+    <!-- Left Fold Face (Electric Cyan Gradient) -->
+    <path d="M96 160 L256 252 L256 444 L96 352 Z" fill="url(#cyanRibbon)" />
+    
+    <!-- Right Fold Face (Deep Emerald Facet) -->
+    <path d="M416 160 L256 252 L256 444 L416 352 Z" fill="url(#goldRibbon)" opacity="0.82" />
+
+    <!-- Inner Floating Origami Cut-out Fold -->
+    <path d="M256 160 L336 206 L256 252 L176 206 Z" fill="#ffffff" opacity="0.95" />
+
+    <!-- Center Fold Spine Line -->
+    <path d="M256 252 L256 444" stroke="#ffffff" stroke-width="5" stroke-linecap="round" opacity="0.85" />
+
+    <!-- Left Edge Highlight -->
+    <path d="M96 160 L96 352" stroke="#00f2fe" stroke-width="3" opacity="0.7" />
+
+    <!-- Right Edge Highlight -->
+    <path d="M416 160 L416 352" stroke="#ffb703" stroke-width="3" opacity="0.7" />
+  </g>
+
+  <!-- Floating Center Core Diamond Particle -->
+  <polygon points="256,236 266,256 256,276 246,256" fill="#ffffff" filter="url(#hyperGlow)" />
+</svg>
